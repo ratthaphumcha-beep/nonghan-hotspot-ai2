@@ -12,6 +12,7 @@ import secrets
 import logging
 from pathlib import Path
 import pandas as pd
+import datetime # ใช้ถ้าในอนาคตต้องการดึงวันที่ปัจจุบัน
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
@@ -366,24 +367,65 @@ def get_overrides(token: str):
 
 @app.get("/api/dashboard-data")
 def get_dashboard_data():
-    # ข้อมูลดิบของ 6 สถานีปัจจุบันที่เราจะให้ AI วิเคราะห์
-    stations = [
-        {"id": "BNH01", "name_th": "สถานี BNH01 (กลางหนองหาร)", "checkpoint_th": "หนองหาร", "lat": 17.1850, "lng": 104.1800, "do_mgL": 7.2, "ecoli_mpn": 1200, "nh3_mgL": 0.2, "rain_mm": 0},
-        {"id": "BNH02", "name_th": "สถานี BNH02 (ใกล้เทศบาลนคร)", "checkpoint_th": "หนองหาร", "lat": 17.1650, "lng": 104.1450, "do_mgL": 6.8, "ecoli_mpn": 2500, "nh3_mgL": 0.4, "rain_mm": 5},
-        {"id": "BNH03", "name_th": "สถานี BNH03 (เกาะดอนสวรรค์)", "checkpoint_th": "หนองหาร", "lat": 17.1950, "lng": 104.1650, "do_mgL": 7.0, "ecoli_mpn": 800, "nh3_mgL": 0.1, "rain_mm": 0},
-        {"id": "TRIB01", "name_th": "ลำห้วยน้ำก่ำ (TRIB01)", "checkpoint_th": "ลำห้วย", "lat": 17.1100, "lng": 104.2200, "do_mgL": 4.1, "ecoli_mpn": 15000, "nh3_mgL": 2.1, "rain_mm": 20},
-        {"id": "TRIB02", "name_th": "ลำห้วยทราย (TRIB02)", "checkpoint_th": "ลำห้วย", "lat": 17.2000, "lng": 104.1100, "do_mgL": 6.5, "ecoli_mpn": 3000, "nh3_mgL": 0.5, "rain_mm": 10},
-        {"id": "TRIB03", "name_th": "ลำห้วยเชียงเครือ (TRIB03)", "checkpoint_th": "ลำห้วย", "lat": 17.2500, "lng": 104.1500, "do_mgL": 2.5, "ecoli_mpn": 35000, "nh3_mgL": 0.8, "rain_mm": 60}
-    ]
-
-    overrides = load_overrides()
-
     try:
-        # วนลูปให้โมเดล AI ทำนายสถานะของแต่ละสถานี
+        # 1. โหลดข้อมูลจากไฟล์ CSV
+        df = pd.read_csv("uploads3-9-20260721-221112565.csv")
+        
+        # 2. หารายการล่าสุดของแต่ละสถานี (เรียงตามวันที่ล่าสุด)
+        latest_data = df.sort_values('date', ascending=False).groupby('station_id').first().reset_index()
+        
+        stations = []
+        
+        # 3. กำหนดพิกัด (ละติจูด, ลองจิจูด) แบบจำลองให้แต่ละสถานี (เนื่องจากใน CSV ไม่มีพิกัด)
+        # (แก้ไขพิกัดให้ตรงกับความเป็นจริงได้ที่นี่)
+        location_coords = {
+            "BNH01": {"lat": 17.2100, "lng": 104.1000},
+            "BNH02": {"lat": 17.2300, "lng": 104.1450},
+            "BNH03": {"lat": 17.2550, "lng": 104.1950},
+            "BNH04": {"lat": 17.0950, "lng": 104.2350},
+            "BNH05": {"lat": 17.1150, "lng": 104.1950},
+            "BNH06": {"lat": 17.1450, "lng": 104.1550},
+            "BNH07": {"lat": 17.1400, "lng": 104.1850},
+            "BNH08": {"lat": 17.1700, "lng": 104.1200},
+            "NHK01": {"lat": 17.1650, "lng": 104.1350},
+            "NHK02": {"lat": 17.1950, "lng": 104.1100},
+            "NHK03": {"lat": 17.2150, "lng": 104.1250},
+            "NHK04": {"lat": 17.2200, "lng": 104.1500},
+            "NHK05": {"lat": 17.2450, "lng": 104.1850},
+            "NHK06": {"lat": 17.1350, "lng": 104.2250},
+            "NHK07": {"lat": 17.1250, "lng": 104.2150},
+            "NHK08": {"lat": 17.1050, "lng": 104.2150},
+            "NHK09": {"lat": 17.1550, "lng": 104.1650},
+            "NHK10": {"lat": 17.1550, "lng": 104.1800}
+        }
+        
+        # 4. แปลงข้อมูลจาก CSV ให้อยู่ในรูปแบบที่หน้าเว็บ (Dashboard) ต้องการ
+        for index, row in latest_data.iterrows():
+            station_id = row['station_id']
+            coords = location_coords.get(station_id, {"lat": 17.1850, "lng": 104.1800}) # ค่าเริ่มต้นถ้าไม่พบพิกัด
+            
+            # ใน CSV ไม่มีค่าฝน (Rain) เราจึงจำลองค่าฝน 0 มม. ไว้ก่อน หรือใส่ลอจิกดึงข้อมูลอื่น
+            rain_val = 0 
+            
+            station_info = {
+                "id": station_id,
+                "name_th": f"สถานี {station_id} ({row['tambon']})",
+                "checkpoint_th": row['station_type'],
+                "lat": coords['lat'],
+                "lng": coords['lng'],
+                "do_mgL": round(row['DO_mg_L'], 1),
+                "ecoli_mpn": int(row['FCB_MPN_100mL']),
+                "nh3_mgL": round(row['NH3_mg_L'], 2),
+                "rain_mm": rain_val
+            }
+            stations.append(station_info)
+            
+        overrides = load_overrides()
+        
+        # 5. วิเคราะห์สถานะ (WQI) โดยให้ AI/โค้ดพยากรณ์จากค่าที่ได้มาใหม่
         for st in stations:
             ov = overrides.get(st["id"])
             if ov:
-                # แอดมินกรอกค่าด้วยมือ (กรณีเซนเซอร์/ระบบ AI มีปัญหา) ใช้ค่านี้แทนค่าเดิม
                 for field in ("do_mgL", "nh3_mgL", "ecoli_mpn", "rain_mm"):
                     if field in ov:
                         st[field] = ov[field]
@@ -392,24 +434,23 @@ def get_dashboard_data():
                 st["override_by"] = ov.get("updated_by", "")
 
                 if ov.get("forced_status") in ("green", "yellow", "red"):
-                    # แอดมินบังคับสถานะเองตรงๆ (ข้ามโมเดล AI ไปเลย เผื่อโมเดลเองก็ใช้งานไม่ได้)
                     st["status"] = ov["forced_status"]
                     continue
 
+            # ใช้โมเดลพยากรณ์ (หรือถ้าจะใช้ค่า WQI_al_class จาก CSV เลยก็สามารถดึงมาตรงนี้ได้)
             input_features = pd.DataFrame({'DO': [st['do_mgL']], 'NH3': [st['nh3_mgL']], 'FCB': [st['ecoli_mpn']], 'Rain': [st['rain_mm']]})
+            prediction = model.predict(input_features)[0] 
 
-            prediction = model.predict(input_features)[0] # ผลลัพธ์ 0, 1, 2
-
-            # แปลงตัวเลขจาก ML กลับเป็นสีให้หน้าเว็บ HTML เข้าใจ
             if prediction == 2: st['status'] = 'red'
             elif prediction == 1: st['status'] = 'yellow'
             else: st['status'] = 'green'
-    except Exception:
-        logger.exception("Model inference failed")
+
+    except Exception as e:
+        logger.exception("Model inference or Data loading failed: " + str(e))
         raise HTTPException(status_code=500, detail="ไม่สามารถประมวลผลข้อมูลสถานีได้ในขณะนี้")
 
-    # ส่ง JSON กลับไปให้ UI (รูปแบบเดียวกับที่หน้าเว็บต้องการเป๊ะๆ)
     return {
+        # สามารถเขียนโค้ดคำนวณสถิติภาพรวมจริงๆ จาก DataFrame ได้ที่นี่ (ตัวอย่างยังใช้ค่าเดิม)
         "summary": { "avg_wqi": 68.40, "class_ab_pct": "50.0%", "class_c_pct": "33.3%", "class_d_pct": "16.7%" },
         "historical_stats": {
             "wqi": [85.87, 85.5, 85.46, 76.47, 76.11, 75.89, 66.84, 64.32, 62.69, 51.41, 42.93],
@@ -424,8 +465,6 @@ def get_dashboard_data():
         },
         "locations": stations
     }
-
-if __name__ == "__main__":
     # ตอนรันบนเครื่องตัวเอง (ไม่มี env var PORT) จะใช้พอร์ต 8000 เหมือนเดิม
     # ตอน deploy บน Render/Railway/Fly.io ระบบจะกำหนด PORT มาให้เอง และต้อง bind ที่ 0.0.0.0
     # (ไม่ใช่ 127.0.0.1) ไม่งั้นเซิร์ฟเวอร์จะรับ request จากภายนอกไม่ได้ deploy แล้วก็ยังเข้าไม่ได้
