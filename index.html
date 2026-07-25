@@ -930,20 +930,32 @@
         ];
     }
 
-   async function fetchModelDataAPI() {
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                const locations = [
-                    { id: "BNH04", name_th: "สถานี BNH04 (นาแก้ว)", checkpoint_th: "ลำห้วย", lat: 17.0950, lng: 104.2350, status: "red", do_mgL: "2.9", ecoli_mpn: "30,064" },
-                    { id: "BNH08", name_th: "สถานี BNH08 (เมืองสกลนคร)", checkpoint_th: "ลำห้วย", lat: 17.1700, lng: 104.1200, status: "red", do_mgL: "3.4", ecoli_mpn: "31,327" },
-                    // ... (มีข้อมูลอีกหลายบรรทัด) ...
-                        year_do: [5.2, 5.4, 5.8, 6.1, 5.9],
-                        class_labels: ["A (ดีมาก)", "B (ดี)", "C (พอใช้)", "D (เสื่อมโทรม)"],
-                        class_counts: [2255, 1478, 927, 340]
-                    }
-                });
-            }, 500); 
-        });
+    async function fetchModelDataAPI() {
+        // ยิง API จริงจาก ml_api.py (FastAPI ที่รันด้วย: python ml_api.py)
+        // ต้องรันเซิร์ฟเวอร์ ml_api.py ทิ้งไว้ก่อน แล้วเปิดไฟล์ HTML นี้ (uvicorn ต้อง online ที่พอร์ต 8000)
+        const API_URL = `${API_BASE}/api/dashboard-data`;
+        try {
+            const res = await fetch(API_URL, { signal: AbortSignal.timeout(3000) });
+            if (!res.ok) throw new Error('API responded with status ' + res.status);
+            const data = await res.json();
+
+            // API จริงไม่ได้คำนวณ forecast 72 ชม. มาให้ (โมเดล Random Forest ตอบแค่สถานะปัจจุบัน)
+            // เลยยังใช้ generateForecast72h ฝั่ง client เหมือนเดิม เพื่อไม่ให้หน้า Simulator พัง
+            data.locations.forEach(loc => {
+                loc.forecast_72h = generateForecast72h(loc.do_mgL);
+                loc.ecoli_mpn = Number(loc.ecoli_mpn).toLocaleString(); // จัดรูปแบบให้เหมือนเดิม เช่น 1,200
+            });
+
+            console.log('✅ เชื่อมต่อ ml_api.py สำเร็จ — ใช้ข้อมูลจากโมเดล AI จริง');
+            setApiStatus(true);
+            return data;
+        } catch (err) {
+            // Fallback: ถ้า ml_api.py ยังไม่รัน / เน็ตล่ม / CORS พัง ให้ใช้ข้อมูลจำลองแทน
+            // กันหน้าจอพังตอน demo สด (ตามคำแนะนำใน template: "ถ้าสาธิตสด ให้เตรียมภาพสำรองไว้เผื่อเน็ตล่ม")
+            console.warn('⚠️ เชื่อมต่อ ml_api.py ไม่ได้ (' + err.message + ') — สลับไปใช้ข้อมูลจำลองสำรอง', err);
+            setApiStatus(false);
+            return getMockDashboardData();
+        }
     }
 
     function setApiStatus(isLive) {
