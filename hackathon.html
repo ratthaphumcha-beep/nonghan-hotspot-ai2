@@ -797,7 +797,7 @@
     // ที่อยู่ของ ml_api.py — ตอนรันบนเครื่องตัวเอง (localhost) จะใช้พอร์ต 8000 อัตโนมัติ
     // ตอน deploy ขึ้น Netlify (หรือโดเมนจริง) จะไปใช้ PROD_API_BASE แทน เพราะ 127.0.0.1 ของแต่ละคนไม่เหมือนกัน
     const IS_LOCAL_HOST = ['localhost', '127.0.0.1'].includes(location.hostname);
-    const PROD_API_BASE = 'https://YOUR-ML-API-SERVICE.onrender.com'; // TODO: แก้เป็น URL จริงหลัง deploy ml_api.py (เช่น Render/Railway/Fly.io) — ห้ามใช้ 127.0.0.1
+   const PROD_API_BASE = 'https://nonghan-hotspot-ai2.onrender.com'; // TODO: แก้เป็น URL จริงหลัง deploy ml_api.py (เช่น Render/Railway/Fly.io) — ห้ามใช้ 127.0.0.1
     const API_BASE = IS_LOCAL_HOST ? 'http://127.0.0.1:8000' : PROD_API_BASE;
 
     // สถานะแอดมิน (token เก็บใน sessionStorage เพื่อให้รีเฟรชหน้าแล้วยังล็อกอินอยู่ แต่หายเมื่อปิดแท็บ)
